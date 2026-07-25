@@ -157,30 +157,61 @@ export default async function handler(req, res) {
     for (let i = 0; i < allImages.length; i++) {
       const img = allImages[i];
       try {
-        const uploaded = await uploadPyrusFile(img.name, img.buffer);
+        // Timeout 30 сек на каждый файл
+        const uploadPromise = uploadPyrusFile(img.name, img.buffer);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Upload timeout 30s')), 30000)
+        );
+        const uploaded = await Promise.race([uploadPromise, timeoutPromise]);
         attachmentIds.push(uploaded.id);
-        if ((i + 1) % 20 === 0 || i === allImages.length - 1) {
-          console.log(`[EXTRACT] task=${taskId} uploaded ${i + 1}/${allImages.length}`);
+        if ((i + 1) % 10 === 0 || i === allImages.length - 1) {
+          console.log(`[EXTRACT] task=${taskId} uploaded ${i + 1}/${allImages.length} (${img.name})`);
         }
       } catch (err) {
         console.error(`[EXTRACT] task=${taskId} failed to upload ${img.name}:`, err.message);
+        // Не падаем — пропускаем проблемный файл
       }
     }
+    console.log(`[EXTRACT] task=${taskId} upload done: ${attachmentIds.length}/${allImages.length} succeeded`);
 
     if (attachmentIds.length === 0) {
       return res.status(500).json({ error: 'All uploads failed' });
     }
 
     // 7. Привязываем к полю u_photo2_source
-    await pyrusRequest(`/tasks/${taskId}/comments`, {
-      method: 'POST',
-      body: JSON.stringify({
-        text: '',
-        field_updates: [
-          { code: 'u_photo2_source', value: attachmentIds.map(id => ({ attachment_id: id })) },
-        ],
-      }),
-    });
+    // Pyrus API требует сначала прикрепить файлы к комменту, чтобы получить attachment_id
+    // (upload_id из uploadPyrusFile не работает напрямую в field_updates)
+    let realAttachmentIds = [];
+    try {
+      const attachResult = await pyrusRequest(`/tasks/${taskId}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({
+          text: '.',  // минимальный коммент чтобы получить attachment_id
+          attachments: attachmentIds,
+        }),
+      });
+      const lastComment = (attachResult.task || attachResult).comments?.slice(-1)[0];
+      if (lastComment && lastComment.attachments) {
+        realAttachmentIds = lastComment.attachments.map(a => a.id);
+        console.log(`[EXTRACT] task=${taskId} got ${realAttachmentIds.length} real attachment_ids`);
+      }
+    } catch (e) {
+      console.error(`[EXTRACT] task=${taskId} attach to comment failed:`, e.message);
+    }
+
+    if (realAttachmentIds.length > 0) {
+      await pyrusRequest(`/tasks/${taskId}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({
+          text: '',
+          field_updates: [
+            { code: 'u_photo2_source', value: realAttachmentIds.map(id => ({ attachment_id: id })) },
+          ],
+        }),
+      });
+    } else {
+      console.error(`[EXTRACT] task=${taskId} no real attachment_ids, skipping field update`);
+    }
 
     // 8. Финальный комментарий
     await pyrusRequest(`/tasks/${taskId}/comments`, {
