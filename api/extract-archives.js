@@ -183,17 +183,30 @@ export default async function handler(req, res) {
     // (upload_id из uploadPyrusFile не работает напрямую в field_updates)
     let realAttachmentIds = [];
     try {
-      const attachResult = await pyrusRequest(`/tasks/${taskId}/comments`, {
+      // Шаг 1: прикрепляем файлы к "техническому" комменту
+      await pyrusRequest(`/tasks/${taskId}/comments`, {
         method: 'POST',
         body: JSON.stringify({
-          text: '.',  // минимальный коммент чтобы получить attachment_id
+          text: '.',  // минимальный коммент
           attachments: attachmentIds,
         }),
       });
-      const lastComment = (attachResult.task || attachResult).comments?.slice(-1)[0];
-      if (lastComment && lastComment.attachments) {
-        realAttachmentIds = lastComment.attachments.map(a => a.id);
-        console.log(`[EXTRACT] task=${taskId} got ${realAttachmentIds.length} real attachment_ids`);
+      console.log(`[EXTRACT] task=${taskId} attached ${attachmentIds.length} files to comment`);
+
+      // Шаг 2: перечитываем задачу чтобы получить реальные attachment_id
+      const freshTaskRes = await pyrusRequest(`/tasks/${taskId}`);
+      const freshTask = freshTaskRes.task || freshTaskRes;
+      const comments = freshTask.comments || [];
+
+      // Берём последний комментарий (наш технический) и его attachments
+      if (comments.length > 0) {
+        const lastComment = comments[comments.length - 1];
+        if (lastComment && lastComment.attachments) {
+          realAttachmentIds = lastComment.attachments
+            .map(a => a.id)
+            .filter(id => attachmentIds.includes(id)); // только наши
+          console.log(`[EXTRACT] task=${taskId} got ${realAttachmentIds.length} real attachment_ids from last comment`);
+        }
       }
     } catch (e) {
       console.error(`[EXTRACT] task=${taskId} attach to comment failed:`, e.message);
@@ -209,6 +222,7 @@ export default async function handler(req, res) {
           ],
         }),
       });
+      console.log(`[EXTRACT] task=${taskId} field updated: ${realAttachmentIds.length} photos → u_photo2_source`);
     } else {
       console.error(`[EXTRACT] task=${taskId} no real attachment_ids, skipping field update`);
     }
