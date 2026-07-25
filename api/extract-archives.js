@@ -184,10 +184,11 @@ export default async function handler(req, res) {
     let realAttachmentIds = [];
     try {
       // Шаг 1: прикрепляем файлы к "техническому" комменту (attachmentIds уже = guids)
+      // text: ' ' (пробел) — Pyrus требует непустой text, но визуально невидимо
       const attachResult = await pyrusRequest(`/tasks/${taskId}/comments`, {
         method: 'POST',
         body: JSON.stringify({
-          text: '.',  // минимальный коммент
+          text: ' ',  // пробел — минимально видимый, чтобы не мозолил глаза
           attachments: attachmentIds,  // массив guid строк
         }),
       });
