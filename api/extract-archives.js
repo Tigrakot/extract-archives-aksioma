@@ -113,8 +113,13 @@ export default async function handler(req, res) {
             extractedFromThis++;
           }
           console.log(`[EXTRACT] task=${taskId} ${archive.name}: extracted ${extractedFromThis} images`);
+        } else if (/\.(7z|rar)$/i.test(archive.name)) {
+          // .7z и .rar не поддерживаются — просим пережать в .zip
+          const ext = archive.name.match(/\.(7z|rar)$/i)[1].toLowerCase();
+          console.warn(`[EXTRACT] task=${taskId} ${archive.name}: .${ext} not supported, asking user to re-zip`);
+          archive.unsupported = ext;
         } else {
-          console.warn(`[EXTRACT] task=${taskId} ${archive.name}: only .zip supported for now, skipping`);
+          console.warn(`[EXTRACT] task=${taskId} ${archive.name}: unknown archive format, skipping`);
         }
       } catch (err) {
         console.error(`[EXTRACT] task=${taskId} failed to process ${archive.name}:`, err.message);
@@ -124,13 +129,33 @@ export default async function handler(req, res) {
     if (allImages.length === 0) {
       console.log(`[EXTRACT] task=${taskId} no images extracted`);
       // Пишем комментарий чтобы юзер видел что произошло
+      // Разделяем причины: неподдерживаемый формат vs реально пустой архив
+      const unsupported = archives.filter(a => a.unsupported);
+      const supported = archives.filter(a => !a.unsupported);
+
+      let commentText;
+      if (unsupported.length > 0 && supported.length === 0) {
+        // Все архивы — неподдерживаемые форматы
+        const exts = [...new Set(unsupported.map(a => a.unsupported))].join('/');
+        commentText = `⚠️ Нашёл ${unsupported.length} архив(ов) в формате .${exts}, но бот пока распаковывает только .zip.\n` +
+                      `Архивы: ${unsupported.map(a => a.name).join(', ')}\n\n` +
+                      `💡 Пережмите архив в .zip (WinRAR/7-Zip → Файл → Сохранить как → ZIP) и прикрепите заново.`;
+      } else if (unsupported.length > 0) {
+        // Смесь: есть и неподдерживаемые, и пустые
+        commentText = `ℹ️ Нашёл ${archives.length} архив(ов) в «Документы от СК»:\n` +
+                      `• Неподдерживаемые форматы (${unsupported.length}): ${unsupported.map(a => a.name).join(', ')}\n` +
+                      `• Без картинок (${supported.length}): ${supported.map(a => a.name).join(', ')}\n\n` +
+                      `💡 Пережмите .rar/.7z в .zip и прикрепите заново.`;
+      } else {
+        // Только .zip — реально пустые или не картинки внутри
+        commentText = `ℹ️ Нашёл ${archives.length} архив(ов) в «Документы от СК», но внутри нет картинок (jpg/png/heic).\n` +
+                      `Архивы: ${archives.map(a => a.name).join(', ')}`;
+      }
+
       try {
         await pyrusRequest(`/tasks/${taskId}/comments`, {
           method: 'POST',
-          body: JSON.stringify({
-            text: `ℹ️ Нашёл ${archives.length} архив(ов) в «Документы от СК», но внутри нет картинок (jpg/png/heic).\n` +
-                  `Архивы: ${archives.map(a => a.name).join(', ')}`,
-          }),
+          body: JSON.stringify({ text: commentText }),
         });
       } catch (e) {}
       return res.status(200).json({
