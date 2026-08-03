@@ -138,14 +138,12 @@ export default async function handler(req, res) {
         // Все архивы — неподдерживаемые форматы
         const exts = [...new Set(unsupported.map(a => a.unsupported))].join('/');
         commentText = `⚠️ Нашёл ${unsupported.length} архив(ов) в формате .${exts}, но бот пока распаковывает только .zip.\n` +
-                      `Архивы: ${unsupported.map(a => a.name).join(', ')}\n\n` +
-                      `💡 Пережмите архив в .zip (WinRAR/7-Zip → Файл → Сохранить как → ZIP) и прикрепите заново.`;
+                      `Архивы: ${unsupported.map(a => a.name).join(', ')}`;
       } else if (unsupported.length > 0) {
         // Смесь: есть и неподдерживаемые, и пустые
         commentText = `ℹ️ Нашёл ${archives.length} архив(ов) в «Документы от СК»:\n` +
                       `• Неподдерживаемые форматы (${unsupported.length}): ${unsupported.map(a => a.name).join(', ')}\n` +
-                      `• Без картинок (${supported.length}): ${supported.map(a => a.name).join(', ')}\n\n` +
-                      `💡 Пережмите .rar/.7z в .zip и прикрепите заново.`;
+                      `• Без картинок (${supported.length}): ${supported.map(a => a.name).join(', ')}`;
       } else {
         // Только .zip — реально пустые или не картинки внутри
         commentText = `ℹ️ Нашёл ${archives.length} архив(ов) в «Документы от СК», но внутри нет картинок (jpg/png/heic).\n` +
