@@ -11,9 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Официальный unrar от RARLAB — поддерживает ВСЕ rar5/rar4 (включая зашифрованные)
-ARG UNRAR_VERSION=7.1.10
 RUN curl -L -o /tmp/unrar.deb \
-    https://www.rarlab.com/rar/unrarlinux-x64-${UNRAR_VERSION}.deb \
+    https://www.rarlab.com/rar/unrar_5.2.5-0.1_amd64.deb \
     && dpkg -i /tmp/unrar.deb \
     && rm /tmp/unrar.deb \
     && unrar | head -1
